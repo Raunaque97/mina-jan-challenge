@@ -89,7 +89,7 @@ export class SecretMessaging extends SmartContract {
   }
 }
 function verifyMessage(message: Field) {
-  const [flag1, flag2, flag3, flag4, flag5, flag6] = message.toBits(6);
+  const [flag1, flag2, flag3, flag4, flag5, flag6] = message.toBits();
   // If flag 1 is true, then all other flags must be false
   flag1
     .not()
