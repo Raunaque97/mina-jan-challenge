@@ -51,31 +51,29 @@ describe('Add', () => {
 
   it('generates and deploys the smart contract', async () => {
     await localDeploy();
-    const root = zkApp.addressesRoot.get();
-    console.log('init root', root.toString());
   });
 
   it('add a new address', async () => {
     await localDeploy();
 
-    console.log('deployerAccount', deployerAccount.toBase58());
-    console.log('spy0', spy0.toBase58());
-    console.log('spy1', spy1.toBase58());
-    console.log('adminAddress', adminAddress.toBase58());
+    // console.log('deployerAccount', deployerAccount.toBase58());
+    // console.log('spy0', spy0.toBase58());
+    // console.log('spy1', spy1.toBase58());
+    // console.log('adminAddress', adminAddress.toBase58());
 
     let merkelMap = new MerkleMap();
     merkelMap.set(Poseidon.hash(spy0.toFields()), Field(1));
-    const witness = merkelMap.getWitness(Poseidon.hash(spy0.toFields()));
 
     const txn = await Mina.transaction(deployerAccount, () => {
-      zkApp.addAddress(spy0, witness);
+      AccountUpdate.fundNewAccount(deployerAccount);
+      zkApp.addAddress(spy0);
     });
     await txn.prove();
     await txn.sign([deployerKey, adminKey]).send();
 
     // spy0 deposit's a message
     const txn1 = await Mina.transaction(spy0, () => {
-      zkApp.depositMessage(Field(6), witness, witness);
+      zkApp.depositMessage(Field(6));
     });
     await txn1.prove();
     await txn1.sign([spy0key]).send();

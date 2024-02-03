@@ -5,21 +5,19 @@ import {
   State,
   method,
   PublicKey,
-  MerkleMap,
-  MerkleMapWitness,
-  Poseidon,
   Permissions,
   AccountUpdate,
-  UInt32,
+  UInt64,
+  Account,
 } from 'o1js';
 
+/**
+ * Uses Custom tokens to store who are the eligible addresses
+ * customTokenBalance   0: Not eligible   1: eligible   2: message deposited
+ */
 export class SecretMessaging extends SmartContract {
-  @state(Field) addressesRoot = State<Field>(); // Merket map of H(address) => field, 0: invalid address 1:valid address
   @state(Field) addressCount = State<Field>();
-
-  @state(Field) messagesRoot = State<Field>(); // Merket map of H(address) => field
   @state(Field) messageCount = State<Field>();
-  // @state(Field) adminAddressHash = State<Field>();
 
   events = {
     'publish-message': Field,
@@ -31,64 +29,33 @@ export class SecretMessaging extends SmartContract {
       ...Permissions.default(),
       editState: Permissions.proofOrSignature(),
     });
-
-    const map = new MerkleMap();
-    // this.adminAddressHash.set(Poseidon.hash(this.sender.toFields()));
-    this.addressesRoot.set(map.getRoot()); // set default root
-    this.messagesRoot.set(map.getRoot()); // set default root
   }
 
-  @method addAddress(address: PublicKey, witness: MerkleMapWitness) {
+  @method addAddress(address: PublicKey) {
     this.requireSignature(); // Only Admin can add address
-
+    this.token.mint({ address, amount: 1n });
     const addressCount = this.addressCount.getAndRequireEquals();
     addressCount.assertLessThan(
       101,
       'there will be a maximum of 100 eligible addresses'
     );
-
-    const addressesRoot = this.addressesRoot.getAndRequireEquals();
-    const [oldRoot, key] = witness.computeRootAndKey(Field(0));
-    addressesRoot.assertEquals(oldRoot);
-    key.assertEquals(Poseidon.hash(address.toFields()));
-
-    //update state
-    const [newRoot] = witness.computeRootAndKey(Field(1));
-    this.addressesRoot.set(newRoot);
-    this.addressCount.set(addressCount.add(1));
   }
 
-  @method depositMessage(
-    message: Field,
-    addressWitness: MerkleMapWitness,
-    messageWitness: MerkleMapWitness
-  ) {
+  @method depositMessage(message: Field) {
     AccountUpdate.create(this.sender).requireSignature(); // proves the sender is not spoofed
-
     const messageCount = this.messageCount.getAndRequireEquals();
-    const addressesRoot = this.addressesRoot.getAndRequireEquals();
-    const messagesRoot = this.messagesRoot.getAndRequireEquals();
-
-    const [computedAddressRoot, addressWitnessKey] =
-      addressWitness.computeRootAndKey(Field(1));
-    computedAddressRoot.assertEquals(addressesRoot);
-    addressWitnessKey.assertEquals(Poseidon.hash(this.sender.toFields()));
-
-    const [computedMessageRoot, messageWitnessKey] =
-      messageWitness.computeRootAndKey(Field(0));
-    computedMessageRoot.assertEquals(messagesRoot);
-    messageWitnessKey.assertEquals(Poseidon.hash(this.sender.toFields()));
-
+    const senderAccount = Account(this.sender, this.token.id);
+    const customTokenBalance = senderAccount.balance.getAndRequireEquals();
+    customTokenBalance.assertEquals(UInt64.from(1));
     verifyMessage(message);
-
     // update states
-    const [newMessageRoot] = messageWitness.computeRootAndKey(message);
-    this.messagesRoot.set(newMessageRoot);
     this.messageCount.set(messageCount.add(1));
+    this.token.mint({ address: this.sender, amount: 1n });
     // emit events
     this.emitEvent('publish-message', message);
   }
 }
+
 function verifyMessage(message: Field) {
   const [flag1, flag2, flag3, flag4, flag5, flag6] = message.toBits();
   // If flag 1 is true, then all other flags must be false
